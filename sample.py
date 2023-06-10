@@ -1,2 +1,2 @@
 print('hello')
-print(f'this is {{env}} branch')
+print(f'this is ${{env}} branch')

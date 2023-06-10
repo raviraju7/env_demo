@@ -46,4 +46,6 @@ jobs:
           python-version: '3.8'
         
       - name: Run python program
-        run: python sample.py ${{env.env}}   
+        #run: python sample.py ${{env.env}}
+        #above method of passing parameter as arg is works
+        run: python sample.py

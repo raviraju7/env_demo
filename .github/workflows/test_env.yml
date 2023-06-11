@@ -11,8 +11,7 @@ on:
     paths:
     - cicd_test
   pull_request:
-    branches:
-    - develop
+    branches: ["develop"]
     paths:
     - cicd_test
 

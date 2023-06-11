@@ -17,6 +17,6 @@ env_n = os.environ.get('ENV.ENV')
 #below method of receiving the parameter works
 #e = sys.argv[1]
 #print(e)
-
+print('cicd_test')
 print('hello')
 print(f'this is {env} branch {env_n}')

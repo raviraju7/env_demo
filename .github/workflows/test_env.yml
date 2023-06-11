@@ -54,4 +54,4 @@ jobs:
       - name: Run python program
         #run: python sample.py ${{env.env}}
         #above method of passing parameter as arg is works
-        run: python sample.py
+        run: python cicd_test/cicd_test.py

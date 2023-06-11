@@ -15,5 +15,5 @@ env_n = os.environ.get('ENV.ENV')
 #e = sys.argv[1]
 #print(e)
 
-print('hello')
+print('hai')
 print(f'this is {env} branch {env_n}')

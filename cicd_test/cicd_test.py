@@ -3,6 +3,9 @@ import sys
 
 # Access GitHub repository secrets
 # correct way to receive the parameter
+
+print('cicd_test')
+
 env = os.environ.get('env')
 
 #incoorect way to get the parameter - env_n wont get the value

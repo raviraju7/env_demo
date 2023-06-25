@@ -47,6 +47,8 @@ jobs:
           python-version: '3.8'
         
       - name: Run python program
+        environment: 
+          env_dev: env_dev
         #run: python sample.py ${{env.env}}
         #above method of passing parameter as arg is works
         run: python cicd_test/cicd_test.py

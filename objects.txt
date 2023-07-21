@@ -1,0 +1,245 @@
+USE database dev_landing;
+--Create schema cps;
+Use schema cps;
+-- drop schema cps;
+
+Grant USAGE on schema dev_landing.cps to role NZHP_Analyst_Fr;
+GRANT SELECT ON ALL TABLES IN SCHEMA dev_landing.CPS to role NZHP_Analyst_Fr;
+
+/*File Format to import*/
+
+
+ CREATE FILE FORMAT If not exists CPS_CSV_FORMAT
+                          TYPE = CSV
+                          FIELD_DELIMITER = ','
+                          SKIP_HEADER = 1
+                          FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+                          NULL_IF = ('NULL', 'null')
+                          EMPTY_FIELD_AS_NULL = true                         
+                                                    
+                          ;
+
+
+/***************************************************************************************
+Load - Contract Header
+
+Note: Date field cause issues. Hence loaded as string. Later convert it to date type
+***************************************************************************************/
+CREATE TABLE if not exists load_contract_header (
+CONTRACT_REFERENCE	VARCHAR2(255) comment 'The NZHP contract reference code for that line item.',
+CONTRACT_SUPPLIER_NAME_FFORMAT	VARCHAR2(255) comment 'Supplier Trade name',
+SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Name',
+CONTRACT_TITLE	VARCHAR2(255) comment 'The Title of the contract',
+CONTRACT_DESCRIPTION	VARCHAR2(255) comment 'The Description of the contract', 
+CATEGORY_TYPE	VARCHAR2(20) comment 'What type of Category the contract is sitting under',
+VARIATION_NUMBER	VARCHAR2(60) comment 'To verify the Variation number of the contract',
+NOVATED	VARCHAR2(10),
+CONTRACT_MANAGER	VARCHAR2(30) comment 'The contract Manger',
+PROCUREMENT_SPECIALIST	VARCHAR2(30) comment 'The procurement Specialist for the specific contract',
+STATUS	VARCHAR2(30) comment 'The Status of the Contract, open, closed etc',
+CONTRACT_GROUP	VARCHAR2(30) comment 'Under what group the contract is sitting',
+CONTRACT_PARTIES	VARCHAR2(30) comment 'What District health boards are included in the contract',
+CONTRACT_START_DATE	VARCHAR2(10) comment 'What date the contract started',
+ORIGINAL_EXPIRY_DATE VARCHAR2(10) comment 'What date the contract will end',  
+CURRENT_EXPIRY_DATE	VARCHAR2(10) comment 'What date the contract will end after extending',
+PLANNED_ACTION_ON_EXPIRY VARCHAR2(50) comment 'What panels procurement have for the contract, renew, etc',
+RIGHT_OF_RENEWAL_NOTICE_DATE	VARCHAR2(10) comment 'the date of renewal',
+RIGHT_OF_RENEWAL_STATUS	VARCHAR2(30) comment 'renewal status' ,
+ROR_TERM_NOTE	VARCHAR2(255) comment 'The terms of the ROR',
+SUB_CATEGORY	VARCHAR2(100) comment 'Under what sub category the contract sits',
+PROCUREMENT_CATEGORY	VARCHAR2(100) comment 'Under what Category the contract sits',
+TOTAL_CONTRACT_VALUE	NUMBER(10,0) comment 'The Total contract Value',
+TOTAL_ANNUAL_VALUE	NUMBER(10,0) comment 'Total Annual spend for the contract',
+CONTRACT_CLASS	VARCHAR2(55) comment 'contract class',
+PRICE_REVIEW_CLAUSE	VARCHAR2(20) comment 'Notes on price review',
+LEAD_AGENCY	VARCHAR2(30 BYTE) comment 'Pharmac or NZHP or etc',
+LEGACY_CONTRACT_REFERENCE	VARCHAR2(255) comment 'Contract reference used by District health board',
+SUBSEQUENT_CONTRACT_REF	VARCHAR2(255) comment 'Subsequent contract reference',
+SUPPLIER_MASTER_ID	NUMBER(10,0) comment 'Supplier master id',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+WHEN_CREATED	VARCHAR2(10) comment 'When the record created',
+WHEN_UPDATED	VARCHAR2(10) comment 'When the record updated',
+WHO_CHANGED	VARCHAR2(20) comment 'Who has changed the record'
+) comment= "Process: Contract and Pricing Schedule, Type: truncate and load, Purpose: Contract Header Holding area to support import interim solution within the FPIM Data Platform, Refresh Schedule: On-demand";
+
+
+
+/***************************
+Load - Price Schedule - m.m
+****************************/
+
+CREATE TABLE if not exists load_price_schedule (
+PRICE_SCHEDULE_ID	NUMBER comment 'The Unique Identifier for the Price Schedule row. Required for Change Flag U or D, Blank for Change Flag of I. NA - for load table',
+CURRENCY_CODE	VARCHAR2(10) comment 'The abbreviated description of the currency that the price schedule line is purchased in',
+LINE_TYPE	VARCHAR2(255) comment 'The field states whether if the line item is a good or service-related item',
+ITEM_DESCRIPTION	VARCHAR2(255) comment 'The description of the line should be the aggregate of the following four fields',
+FUNCTIONAL_NAME	VARCHAR2(200) comment 'The functional name should state what the line item is and what is used for',
+ITEM_VARIANT	VARCHAR2(200) comment 'The variant field should state multiple characteristics of an item and may include abbreviations',
+BRAND	VARCHAR2(50) comment 'The field should be populated by the  item line’s brand name',
+SUB_BRAND	VARCHAR2(50) comment 'The sub-brand is the registered trademarked. This should not be included in the functional name field',
+SUPPLIER_VENDOR_PART_NUMBER	VARCHAR2(50) comment 'The unique identifier that the supplier has assigned to this line item',
+PRICE	NUMBER(12,4) comment 'The new price agreed on the contract',
+LIST_PRICE	NUMBER(12,4) comment 'The price the supplier has listed this item at before the contract is agreed upon',
+MARKET_PRICE	NUMBER(12,4) comment 'The average price of this item in the market',
+MINIMUM_RELEASE_AMOUNT	VARCHAR2(20) comment 'The minimum quantity required to purchase at one time',
+CONTRACT_REF	VARCHAR2(40) comment 'The NZHP contract reference code for that line item. To ensure consistency the code is taken from Daptiv',
+PRIVATE_CONTRACT	VARCHAR2(1) comment 'The field states whether the line item is to be keep confidential from DHBs',
+ITEM_MASTER	NUMBER comment 'item master id',
+SUPPLIER_UOM	VARCHAR2(255) comment 'The unit of measure the line item will be supplied at',
+SUPPLIER_NET_CONTENT	VARCHAR2(20) comment 'The net content the line item will be supplied at',
+LEVEL2_CONVERSION	VARCHAR2(50) comment 'This field will state the conversion required to get to the 2nd smallest UOM. This field will NOT be populated if only 1 conversion is required to reach the Each UOM',
+LEVEL1_CONVERSION	VARCHAR2(50) comment 'The field will state the conversion required to get to the Each UOM',
+CONVERSION_FACTOR	NUMBER comment 'This field will state the total individual units that make up the price schedule supplier UOM',
+PRICE_PER_UNIT	NUMBER comment 'This field will state the Price Per Individual unit/Price per each',
+ITEM_LINE_COMMENTS	VARCHAR2(255) comment 'A freehold text field where specific condition for that line item is stated',
+PRICE_EFFECTIVE_DATE	VARCHAR2(10) comment 'The date that the agreed upon new price becomes in effect',
+PRICE_TERMINATED_DATE	VARCHAR2(10) comment 'The date that the agreed upon new price is no longer available at',
+TIERS_CODE	VARCHAR2(255) comment 'The generated code assigned to the tier pricing line items',
+TIERS_DESC	VARCHAR2(255) comment 'The description of the tier pricing line item',
+EXPIRED	VARCHAR2(1) comment 'The field will state if the line item is expired or not',
+VARIATION	VARCHAR2(255) comment 'The field will state if the line item contract is a variation',
+MANUFACTURE_CODE	VARCHAR2(255) comment 'The unique identifier the manufacturer has assigned to this item',
+T2_START_DATE	VARCHAR2(10) comment 'The original price effective date',
+T2_END_DATE	VARCHAR2(10) comment 'The original price terminated date',
+CURRENT_FLAG	NUMBER comment 'The field stated if the line item is the most recently updated line. It will be populated with the number 1 if the item line is the most current line',
+SUPPLIER_MASTER_ID	NUMBER comment 'The SDR Supplier identifier for the supplier linked to this line item',
+IS_ACTUAL_VPN	VARCHAR2(1) comment 'If the field states ‘Y’ The VPN is provided by the supplier. If the field is ‘N’ the VPN is created by a Data team member to ensure uniqueness',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+DATE_CREATED	VARCHAR2(10) comment 'The date the line item was created',
+DATE_UPDATED	VARCHAR2(10) comment 'The date the line item was last Updated',
+WHO_CHANGED	VARCHAR2(20) comment 'The initials of the last individual who updated the line item'
+) comment= "Process: Contract and Pricing Schedule, Type: truncate and load, Purpose: Price Schedule Holding area to support import interim solution within the FPIM Data Platform, Refresh Schedule: On-demand";
+
+
+/***************************************
+Master - contract header
+Note: variant replaced with item_variant
+****************************************/
+
+
+CREATE TABLE if not exists contract_header (
+CONTRACT_REFERENCE	VARCHAR2(255) comment 'The NZHP contract reference code for that line item.',
+CONTRACT_SUPPLIER_NAME_FFORMAT	VARCHAR2(255) comment 'Supplier Trade name',
+SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Name',
+CONTRACT_TITLE	VARCHAR2(255) comment 'The Title of the contract',
+CONTRACT_DESCRIPTION	VARCHAR2(255) comment 'The Description of the contract', 
+CATEGORY_TYPE	VARCHAR2(20) comment 'What type of Category the contract is sitting under',
+VARIATION_NUMBER	VARCHAR2(60) comment 'To verify the Variation number of the contract',
+NOVATED	VARCHAR2(10),
+CONTRACT_MANAGER	VARCHAR2(30) comment 'The contract Manger',
+PROCUREMENT_SPECIALIST	VARCHAR2(30) comment 'The procurement Specialist for the specific contract',
+STATUS	VARCHAR2(30) comment 'The Status of the Contract, open, closed etc',
+CONTRACT_GROUP	VARCHAR2(30) comment 'Under what group the contract is sitting',
+CONTRACT_PARTIES	VARCHAR2(30) comment 'What District health boards are included in the contract',
+CONTRACT_START_DATE	DATE comment 'What date the contract started',
+ORIGINAL_EXPIRY_DATE DATE comment 'What date the contract will end',  
+CURRENT_EXPIRY_DATE	DATE comment 'What date the contract will end after extending',
+PLANNED_ACTION_ON_EXPIRY VARCHAR2(50) comment 'What panels procurement have for the contract, renew, etc',
+RIGHT_OF_RENEWAL_NOTICE_DATE	DATE comment 'the date of renewal',
+RIGHT_OF_RENEWAL_STATUS	VARCHAR2(30) comment 'renewal status' ,
+ROR_TERM_NOTE	VARCHAR2(255) comment 'The terms of the ROR',
+SUB_CATEGORY	VARCHAR2(100) comment 'Under what sub category the contract sits',
+PROCUREMENT_CATEGORY	VARCHAR2(100) comment 'Under what Category the contract sits',
+TOTAL_CONTRACT_VALUE	NUMBER(10,0) comment 'The Total contract Value',
+TOTAL_ANNUAL_VALUE	NUMBER(10,0) comment 'Total Annual spend for the contract',
+CONTRACT_CLASS	VARCHAR2(55) comment 'contract class',
+PRICE_REVIEW_CLAUSE	VARCHAR2(20) comment 'Notes on price review',
+LEAD_AGENCY	VARCHAR2(30 BYTE) comment 'Pharmac or NZHP or etc',
+LEGACY_CONTRACT_REFERENCE	VARCHAR2(255) comment 'Contract reference used by District health board',
+SUBSEQUENT_CONTRACT_REF	VARCHAR2(255) comment 'Subsequent contract reference',
+SUPPLIER_MASTER_ID	NUMBER(10,0) comment 'Supplier master id',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+WHEN_CREATED	DATE comment 'When the record created',
+WHEN_UPDATED	DATE comment 'When the record updated',
+WHO_CHANGED	VARCHAR2(20) comment 'Who has changed the record'
+) comment= "Process: Contract and Pricing Schedule, Type: Upsert (insert new rows, update existing rows, remove the deleted rows alongside any orphened records), Purpose: Master Contract header table that support export and import interim solution within the FPIM Data Platform, Refresh Schedule: On-demand";
+
+
+/***************************************
+Master - Contract Line
+****************************************/
+
+CREATE TABLE if not exists table contract_line (
+PRICE_SCHEDULE_ID	NUMBER comment 'The Unique Identifier for the Price Schedule row. Required for Change Flag U or D, Blank for Change Flag of I',
+SUPPLIER_MASTER_ID	NUMBER comment 'The SDR Supplier identifier for the supplier linked to this line item - FK to link contract item detail',
+SUPPLIER_VENDOR_PART_NUMBER	VARCHAR2(50) comment 'The unique identifier that the supplier has assigned to this line item - FK to link contract item detail'  ,
+CURRENCY_CODE	VARCHAR2(10) comment 'The abbreviated description of the currency that the price schedule line is purchased in',
+PRICE	NUMBER(12,4) comment 'The new price agreed on the contract',
+LIST_PRICE	NUMBER(12,4) comment 'The price the supplier has listed this item at before the contract is agreed upon',
+MARKET_PRICE	NUMBER(12,4) comment 'The average price of this item in the market',
+MINIMUM_RELEASE_AMOUNT	VARCHAR2(20) comment 'The minimum quantity required to purchase at one time',
+CONTRACT_REFERENCE	VARCHAR2(40) comment 'The NZHP contract reference code for that line item. To ensure consistency the code is taken from Daptiv',
+PRIVATE_CONTRACT	VARCHAR2(1) comment 'The field states whether the line item is to be keep confidential from DHBs',
+ITEM_MASTER	NUMBER comment 'item master id',
+SUPPLIER_UOM	VARCHAR2(255) comment 'The unit of measure the line item will be supplied at',
+SUPPLIER_NET_CONTENT	VARCHAR2(20) comment 'The net content the line item will be supplied at',
+LEVEL2_CONVERSION	VARCHAR2(50) comment 'This field will state the conversion required to get to the 2nd smallest UOM. This field will NOT be populated if only 1 conversion is required to reach the Each UOM',
+LEVEL1_CONVERSION	VARCHAR2(50) comment 'The field will state the conversion required to get to the Each UOM',
+CONVERSION_FACTOR	NUMBER comment 'This field will state the total individual units that make up the price schedule supplier UOM',
+PRICE_PER_UNIT	NUMBER comment 'This field will state the Price Per Individual unit/Price per each',
+ITEM_LINE_COMMENTS	VARCHAR2(255) comment 'A freehold text field where specific condition for that line item is stated',
+PRICE_EFFECTIVE_DATE	DATE comment 'The date that the agreed upon new price becomes in effect',
+PRICE_TERMINATED_DATE	DATE comment 'The date that the agreed upon new price is no longer available at',
+TIERS_CODE	VARCHAR2(255) comment 'The generated code assigned to the tier pricing line items',
+TIERS_DESC	VARCHAR2(255) comment 'The description of the tier pricing line item',
+EXPIRED	VARCHAR2(1) comment 'The field will state if the line item is expired or not',
+VARIATION	VARCHAR2(255) comment 'The field will state if the line item contract is a variation',
+T2_START_DATE	DATE comment 'The original price effective date',
+T2_END_DATE	DATE comment 'The original price terminated date',
+CURRENT_FLAG	NUMBER comment 'The field stated if the line item is the most recently updated line. It will be populated with the number 1 if the item line is the most current line',
+IS_ACTUAL_VPN	VARCHAR2(1) comment 'If the field states ‘Y’ The VPN is provided by the supplier. If the field is ‘N’ the VPN is created by a Data team member to ensure uniqueness',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+DATE_CREATED	DATE comment 'The date the line item was created',
+DATE_UPDATED	DATE comment 'The date the line item was last Updated',
+WHO_CHANGED	VARCHAR2(20) comment 'The initials of the last individual who updated the line item'
+) comment= "Process: Contract and Pricing Schedule, Type: Upsert (insert new rows, update existing rows, remove the deleted rows alongside any orphened records), Purpose: Master Contract Line table that support export and import interim solution within the FPIM Data Platform, Refresh Schedule: On-demand";
+
+
+/***************************************
+Master - Contract Item Detail 
+****************************************/
+
+CREATE TABLE if not exists contract_item_detail (
+SUPPLIER_MASTER_ID	NUMBER comment 'The SDR Supplier identifier for the supplier linked to this line item - composite PK',
+SUPPLIER_VENDOR_PART_NUMBER	VARCHAR2(50) comment 'The unique identifier that the supplier has assigned to this line item - composite PK'  ,
+ITEM_MASTER	NUMBER comment 'item master id',
+LINE_TYPE	VARCHAR2(255) comment 'The field states whether if the line item is a good or service-related item',
+ITEM_DESCRIPTION	VARCHAR2(255) comment 'The description of the line should be the aggregate of the following four fields',
+FUNCTIONAL_NAME	VARCHAR2(200) comment 'The functional name should state what the line item is and what is used for',
+ITEM_VARIANT	VARCHAR2(200) comment 'The variant field should state multiple characteristics of an item and may include abbreviations',
+BRAND	VARCHAR2(50) comment 'The field should be populated by the  item line’s brand name',
+SUB_BRAND	VARCHAR2(50) comment 'The sub-brand is the registered trademarked. This should not be included in the functional name field',
+MANUFACTURE_CODE	VARCHAR2(255) comment 'The unique identifier the manufacturer has assigned to this item',
+CURRENT_FLAG	NUMBER comment 'The field stated if the line item is the most recently updated line. It will be populated with the number 1 if the item line is the most current line',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+DATE_CREATED	DATE comment 'The date the line item was created',
+DATE_UPDATED	DATE comment 'The date the line item was last Updated',
+WHO_CHANGED	VARCHAR2(20) comment 'The initials of the last individual who updated the line item'
+) comment= "Process: Contract and Pricing Schedule, Type: Upsert (insert new rows, update existing rows, remove the deleted rows alongside any orphened records), Purpose: Master Contract Item Detail table that support export and import interim solution within the FPIM Data Platform, Refresh Schedule: On-demand";
+
+
+/*********************
+Audit
+**********************/
+
+/*One time sequence creation step - executed along with one off initial ingestion*/
+CREATE OR REPLACE SEQUENCE run_id_seq START = 1 INCREMENT = 1;
+--SELECT Run_Number_Sequence.nextval -- to get the next sequence value;
+
+CREATE table if not exists audit_contract(
+run_id INT comment 'PK - 1 entry per procedure call',
+workflow_name varchar2(50) comment 'Procedure or job name',
+start_time timestamp comment 'Start datetime',
+end_time timestamp comment 'End datetime',
+status varchar2(10) comment 'Success/Fail'
+)comment= "Process: Contract and Pricing Schedule, Type: Insert, Purpose: Audit table to track the success or failure of the batch run i.e. status of the procedure execution, Refresh Schedule: On-demand";
+
+CREATE table if not exists audit_contract_detail(
+message_id INT IDENTITY (1,1) comment 'PK - 1 entry per event',
+run_id int comment 'FK for audit contract table',
+message varchar2(4000) comment 'event summary with a key to trace back the Error or success or Rejected rows',
+severity char(1) comment 'S-Success (inserted/updated/deleted) E-Error (Failure due to format or other issue) W-Warning (Reject - No action)',
+impacted_record variant comment 'record that was either loaded successfully or had an error',
+process_timestamp timestamp DEFAULT CURRENT_TIMESTAMP() comment 'record processed time'
+)comment= "Process: Contract and Pricing Schedule, Type: Insert, Purpose: Audit Detail table to track the success or failure of each row processed in the batch run, Refresh Schedule: On-demand";
+

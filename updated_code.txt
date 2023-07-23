@@ -1,0 +1,402 @@
+https://app.snowflake.com/cvxoyqw/re15884/w2uUTCTxbSAF#query
+
+create database dev_landing;
+create schema dev_landing.cps;
+
+/*File Format to import*/
+
+
+ CREATE FILE FORMAT If not exists dev_landing.cps.CPS_CSV_FORMAT
+                          TYPE = CSV
+                          FIELD_DELIMITER = ','
+                          SKIP_HEADER = 1
+                          FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+                          NULL_IF = ('NULL', 'null')
+                          EMPTY_FIELD_AS_NULL = true                         
+                                                    
+                          ;
+
+CREATE or replace table  load_contract_header (
+CONTRACT_REFERENCE	VARCHAR2(255) comment 'The NZHP contract reference code for that line item.',
+CONTRACT_SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Trade name',
+SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Name',
+CONTRACT_DESCRIPTION	VARCHAR2(255) comment 'The Description of the contract', 
+CATEGORY_TYPE	VARCHAR2(20) comment 'What type of Category the contract is sitting under',
+CONTRACT_START_DATE	VARCHAR2(10) comment 'What date the contract started',
+TOTAL_CONTRACT_VALUE	NUMBER(10,0) comment 'The Total contract Value',
+CHANGE_FLAG VARCHAR2(1) comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+WHEN_CREATED	VARCHAR2(10) comment 'When the record created',
+WHEN_UPDATED	VARCHAR2(10) comment 'When the record updated',
+WHO_CHANGED	VARCHAR2(20) comment 'Who has changed the record'
+)
+
+select * from load_contract_header
+
+
+CREATE or replace table  contract_header (
+CONTRACT_REFERENCE	VARCHAR2(255) comment 'The NZHP contract reference code for that line item.',
+CONTRACT_SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Trade name',
+SUPPLIER_NAME	VARCHAR2(255) comment 'Supplier Name',
+CONTRACT_DESCRIPTION	VARCHAR2(255) comment 'The Description of the contract', 
+CATEGORY_TYPE	VARCHAR2(20) comment 'What type of Category the contract is sitting under',
+CONTRACT_START_DATE	Date comment 'What date the contract started',
+TOTAL_CONTRACT_VALUE	NUMBER(10,0) comment 'The Total contract Value',
+CHANGE_FLAG VARCHAR2(1) default 'I' comment 'Optionally one of I, U or D  (otherwise Blank) to signal what sort of change is required. NA - for load table',
+WHEN_CREATED	timestamp DEFAULT CURRENT_TIMESTAMP() comment 'When the record created',
+WHEN_UPDATED	timestamp DEFAULT CURRENT_TIMESTAMP() comment 'When the record updated',
+WHO_CHANGED	VARCHAR2(100) DEFAULT CURRENT_USER() comment 'Who has changed the record',
+run_id int default 0 comment 'default is 0 i.e. either intital load or manually inserted otherwise it is popualated with the incremental number based on each load'
+)
+
+/*
+insert into contract_header (contract_reference,contract_supplier_name,supplier_name, contract_description, category_type)
+select CONTRACT_REFERENCE,
+CONTRACT_SUPPLIER_NAME,
+SUPPLIER_NAME	,
+CONTRACT_DESCRIPTION,
+CATEGORY_TYPE
+from load_contract_header
+*/
+
+select * from contract_header
+
+
+CREATE OR REPLACE SEQUENCE run_id_seq START = 1 INCREMENT = 1;
+--SELECT Run_Number_Sequence.nextval -- to get the next sequence value;
+
+CREATE or replace table audit_contract(
+run_id INT comment 'PK - 1 entry per procedure call',
+workflow_name varchar2(50) comment 'Procedure or job name',
+status varchar2(10) comment 'Success/Fail',
+message varchar2(1000) comment 'overall load status summary',
+inserted_volume int comment 'Process inserted row count',
+updated_volume int comment 'Process updated row count',
+deleted_volume int comment 'Process deleted row count',
+when_created timestamp DEFAULT CURRENT_TIMESTAMP() comment 'When the record created',
+who_created	varchar2(100) DEFAULT CURRENT_USER() comment 'Who has changed the record'
+
+)comment= "Process: Contract and Pricing Schedule, Type: Insert, Purpose: Audit table to track the success or failure of the batch run i.e. status of the procedure execution, Refresh Schedule: On-demand";
+
+CREATE or replace table  audit_contract_detail(
+message_id INT IDENTITY (1,1) comment 'PK - 1 entry per event',
+run_id int comment 'FK for audit contract table',
+workflow_name varchar2(50) comment 'Procedure or job name',
+message varchar2(4000) comment 'event summary with a key to trace back the Error or success or Rejected rows',
+severity char(1) comment 'S-Success (inserted/updated/deleted) E-Error (Failure due to format or other issue) W-Warning (Reject - No action)',
+input_row varchar2(10000) comment 'the input row that has created an impact in the master table',
+impacted_record varchar2(10000) comment 'record that was either loaded successfully or had an error',
+process_timestamp timestamp DEFAULT CURRENT_TIMESTAMP() comment 'record processed time',
+when_created timestamp DEFAULT CURRENT_TIMESTAMP() comment 'When the record created',
+who_created	varchar2(100) DEFAULT CURRENT_USER() comment 'Who has changed the record'
+)comment= "Process: Contract and Pricing Schedule, Type: Insert, Purpose: Audit Detail table to track the success or failure of each row processed in the batch run, Refresh Schedule: On-demand";
+
+
+
+Create or replace PROCEDURE CONTRACT_HEADER ()
+returns varchar 
+LANGUAGE SQL
+EXECUTE AS OWNER
+AS
+$$
+/* Declare Variables for load_contract_header procedure */   
+
+DECLARE
+
+  /*audit and mster table variables*/  
+  v_run_id int;
+  v_processed_dttm timestamp;
+
+  /*audit table variables*/  
+
+  v_workflow_name varchar2(50);
+  v_status varchar2(10); 
+  v_message varchar2(1000); 
+  v_ins_cursor_count int;
+  v_upd_cursor_count int;
+  v_del_cursor_count int;
+
+  v_detail_message varchar2(1000); 
+  v_input_row varchar2(10000);
+  v_impacted_record varchar2(10000);
+  
+
+  
+
+  v_contract_reference varchar(255) ;
+  v_contract_supplier_name varchar(255);
+  v_supplier_name varchar(255);
+  v_contract_description varchar(255);
+  v_category_type varchar(20);
+  v_contract_start_date varchar(10);
+  v_total_contract_value number(10,0);
+  
+
+  
+  
+  new_recs cursor for select * from LOAD_CONTRACT_HEADER where contract_reference not in (select contract_reference from contract_header) and coalesce(CHANGE_FLAG,'999')<>'D';
+
+  update_recs cursor for select * from LOAD_CONTRACT_HEADER where contract_reference in (select contract_reference from contract_header) and coalesce(CHANGE_FLAG,'999')<>'D';
+
+  deleted_recs cursor for select * from LOAD_CONTRACT_HEADER where contract_reference in (select contract_reference from contract_header) and CHANGE_FLAG='D';
+  
+  
+
+BEGIN
+  
+  select run_id_seq.NEXTVAL  INTO v_run_id;
+  select current_timestamp()  INTO v_processed_dttm;
+
+  v_workflow_name := 'CONTRACT_HEADER'; /*object.keys(this)[0];*/
+  /* Will be populated at the end
+  v_status := ;
+  v_message := ;
+  */
+
+  
+/*Deleted block*/      
+      v_del_cursor_count := 0;
+      FOR recs IN deleted_recs DO                   
+            v_del_cursor_count := v_del_cursor_count + 1;   
+
+            v_contract_reference     :=  recs.contract_reference;
+            v_contract_supplier_name :=  recs.contract_supplier_name;
+            v_supplier_name          :=  recs.supplier_name;
+            v_contract_description   :=  recs.contract_description;
+            v_category_type          :=  recs.category_type;
+            v_contract_start_date    :=  recs.contract_start_date;
+            v_total_contract_value   :=  recs.total_contract_value ;
+
+            v_input_row              :=  recs.contract_reference||','||coalesce(recs.contract_supplier_name,'')
+||','||coalesce(recs.supplier_name,'')||','||coalesce(recs.contract_description,'')||','||coalesce(recs.category_type,'')
+||','||coalesce(recs.contract_start_date,'1900-01-01')||
+            ','||coalesce(recs.total_contract_value,-9999999999)||coalesce(recs.change_flag,'')||',,,';
+
+            select 
+                contract_reference||','|| coalesce(contract_supplier_name,'')||','
+                ||coalesce(supplier_name,'')||','||coalesce(contract_description,'') ||','||
+                coalesce(category_type,'') ||','|| coalesce(contract_start_date,'1900-01-01')||','||                     
+                coalesce(total_contract_value,-9999999999)||','||coalesce(change_flag,'')||','||
+                when_created||','|| when_updated||','||who_changed||','||run_id 
+                into v_impacted_record
+            from
+                contract_header
+             where contract_reference = :v_contract_reference;
+              
+            v_contract_reference     :=  recs.contract_reference;
+
+            delete 
+                from contract_header 
+            where contract_reference = :v_contract_reference;
+
+            v_detail_message := 'Row Deleted - Contract_reference -' ||v_contract_reference;
+            
+            insert into audit_contract_detail (run_id, workflow_name,  message, severity, input_row, impacted_record)
+            values (:v_run_id, :v_workflow_name,  :v_detail_message, 'S', 
+            :v_input_row , :v_impacted_record);
+       
+      END FOR;
+
+
+
+/*Update block*/      
+      v_upd_cursor_count := 0;
+      FOR recs IN update_recs DO                   
+            v_upd_cursor_count := v_upd_cursor_count + 1;    
+        
+            v_contract_reference     :=  recs.contract_reference;
+            v_contract_supplier_name :=  recs.contract_supplier_name;
+            v_supplier_name          :=  recs.supplier_name;
+            v_contract_description   :=  recs.contract_description;
+            v_category_type          :=  recs.category_type;
+            v_contract_start_date    :=  recs.contract_start_date;
+            v_total_contract_value   :=  recs.total_contract_value ;
+
+            
+            v_input_row              :=  recs.contract_reference||','||coalesce(recs.contract_supplier_name,'')
+||','||coalesce(recs.supplier_name,'')||','||coalesce(recs.contract_description,'')||','||coalesce(recs.category_type,'')
+||','||coalesce(recs.contract_start_date,'1900-01-01')||
+            ','||coalesce(recs.total_contract_value,-9999999999)||coalesce(recs.change_flag,'')||',,,';
+
+
+            select 
+                contract_reference||','|| coalesce(contract_supplier_name,'')||','
+                ||coalesce(supplier_name,'')||','||coalesce(contract_description,'') ||','||
+                coalesce(category_type,'') ||','|| coalesce(contract_start_date,'1900-01-01')||','||                     
+                coalesce(total_contract_value,-9999999999)||','||coalesce(change_flag,'')||','||
+                when_created||','|| when_updated||','||who_changed||','||run_id 
+                into v_impacted_record
+            from
+                contract_header
+             where contract_reference = :v_contract_reference;
+
+
+       if (length(recs.contract_start_date)=10 and is_date(to_date(recs.contract_start_date,'yyyy-mm-dd') ::variant)  )
+       then
+              
+        
+            update contract_header 
+                set contract_supplier_name     = :v_contract_supplier_name,
+                    supplier_name              = :v_supplier_name, 
+                    contract_description       = :v_contract_description, 
+                    category_type              = :v_category_type,
+                    contract_start_date        = :v_contract_start_date::date,
+                    total_contract_value       = :v_total_contract_value,
+                    change_flag                = 'U',
+                    run_id                     = :v_run_id  ,
+                    when_updated               = :v_processed_dttm
+                            
+            where contract_reference = :v_contract_reference;
+    
+            v_detail_message := 'Row Updated - Contract_reference -' ||v_contract_reference;
+                
+            insert into audit_contract_detail (run_id, workflow_name,  message, severity, input_row, impacted_record)
+            values (:v_run_id, :v_workflow_name,  :v_detail_message, 'S', 
+                :v_input_row, :v_impacted_record );
+
+        else 
+
+            
+            v_detail_message := 'source data formating issue or other issues - Contract_reference -' ||v_contract_reference;
+            
+            insert into audit_contract_detail (run_id, workflow_name,  message, severity, input_row)
+           
+            values (:v_run_id, :v_workflow_name,  :v_detail_message, 'E', 
+            :v_input_row );
+
+            
+            
+
+            v_ins_cursor_count := v_ins_cursor_count - 1;
+            
+        end if;
+
+
+        
+      END FOR;
+
+/*Insert block*/      
+      v_ins_cursor_count := 0;
+      FOR recs IN new_recs DO                   
+            v_ins_cursor_count := v_ins_cursor_count + 1;    
+        
+            v_contract_reference     :=  recs.contract_reference;
+            v_contract_supplier_name :=  recs.contract_supplier_name;
+            v_supplier_name          :=  recs.supplier_name;
+            v_contract_description   :=  recs.contract_description;
+            v_category_type          :=  recs.category_type;   
+            v_contract_start_date    :=  recs.contract_start_date;
+            v_total_contract_value   :=  recs.total_contract_value ;
+            
+            v_input_row              :=  recs.contract_reference||','||coalesce(recs.contract_supplier_name,'')
+||','||coalesce(recs.supplier_name,'')||','||coalesce(recs.contract_description,'')||','||coalesce(recs.category_type,'')
+||','||coalesce(recs.contract_start_date,'1900-01-01')||
+            ','||coalesce(recs.total_contract_value,-9999999999)||coalesce(recs.change_flag,'')||',,,';
+
+       if (length(recs.contract_start_date)=10 and is_date(to_date(recs.contract_start_date,'yyyy-mm-dd') ::variant)  )
+       then
+     
+        
+            insert into contract_header (contract_reference,contract_supplier_name, supplier_name, contract_description,                  category_type, contract_start_date, total_contract_value, change_flag,run_id)
+            values (:v_contract_reference,:v_contract_supplier_name,:v_supplier_name, :v_contract_description,                            :v_category_type, :v_contract_start_date, :v_total_contract_value,'I', :v_run_id ); 
+
+            v_detail_message := 'Row Inserted - Contract_reference -' ||v_contract_reference;
+            
+            insert into audit_contract_detail (run_id, workflow_name,  message, severity, input_row)
+            values (:v_run_id, :v_workflow_name,  :v_detail_message, 'S', 
+            :v_input_row );
+
+        else 
+
+            
+            v_detail_message := 'source data formating issue or other issues - Contract_reference -' ||v_contract_reference;
+            
+            insert into audit_contract_detail (run_id, workflow_name,  message, severity, input_row)
+           
+            values (:v_run_id, :v_workflow_name,  :v_detail_message, 'E', 
+            :v_input_row );
+
+            
+            
+
+            v_ins_cursor_count := v_ins_cursor_count - 1;
+            
+        end if;
+      END FOR;      
+
+      /*clean up load table
+      To get what was loaded use the run_id and query the variant field that had the input row*/
+      delete from load_contract_header;
+
+       /*Already created above and also the values are assigned
+       v_run_id;
+       v_processed_dttm;
+       v_workflow_name ;
+       v_ins_cursor_count;
+       v_upd_cursor_count;
+       v_del_cursor_count;
+       */
+    
+        v_status := 'Success';    
+        v_message := 'Load summary - Run_id: '||v_run_id||'. New Records - Insert block completed successfully: Recs inserted:'||v_ins_cursor_count||'. Updated Records - Update block completed successfully: Recs Updated:'||v_upd_cursor_count||'. Deleted Records - Deleted block completed successfully: Recs Deleted:'||v_del_cursor_count;
+
+        
+        /*Load main audit table - audit_contract_header*/
+
+        insert into audit_contract (run_id, when_created, workflow_name, status, message, inserted_volume, updated_volume, deleted_volume)
+        values (:v_run_id, :v_processed_dttm, :v_workflow_name, :v_status, :v_message, :v_ins_cursor_count, :v_upd_cursor_count, :v_del_cursor_count);
+        
+
+      
+      
+      RETURN 'Load summary - Run_id: '||v_run_id||'. New Records - Insert block completed successfully: Recs inserted:'||v_ins_cursor_count||'. Updated Records - Update block completed successfully: Recs Updated:'||v_upd_cursor_count||'. Deleted Records - Deleted block completed successfully: Recs Deleted:'||v_del_cursor_count;
+
+/*      
+EXCEPTION
+
+    WHEN OTHERS THEN
+    DECLARE
+        v_error_code STRING;
+        v_message string;
+    BEGIN
+        v_error_code := ERROR_CODE();
+        v_message := ERROR_MESSAGE();
+        v_status := 'Fail';
+      
+    insert into audit_contract (run_id, when_created, workflow_name, status, message, inserted_volume, updated_volume, deleted_volume)
+        values (:v_run_id, :v_processed_dttm, :v_workflow_name, :v_status, :v_message, :v_ins_cursor_count, :v_upd_cursor_count, :v_del_cursor_count);
+    END;
+
+ */   
+END;
+$$
+;
+
+
+select * from load_contract_header;
+
+
+
+CALL  CONTRACT_HEADER ();
+
+--delete from contract_header
+
+select * from contract_header order by run_id;
+
+select * from audit_contract;
+select * from audit_contract_detail;
+
+
+    select case when len('2022-02-01')=10 and is_date(to_date('2022-02-01','yyyy-mm-dd') ::variant) then 1 else 0 end as dt;
+
+    
+    select case when len('22-02-01')=10 and is_date(to_date('22-02-01','yyyy-mm-dd') ::variant) then 1 else 0 end as dt;
+
+
+    select case when len('01-02-2022')=10 and is_date(to_date('01-02-2022','yyyy-mm-dd') ::variant) then 1 else 0 end as dt;
+
+    
+    select case when len('01-02-2022')=10 and is_date('01-02-2022' ::variant) then 1 else 0 end as dt;
+    select case when len('2022-02-01')=10 and is_date('2022-02-01' ::variant) then 1 else 0 end as dt;
+
+
+    select concat_ws(',','a','b','c',null);

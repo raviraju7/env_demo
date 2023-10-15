@@ -24,6 +24,7 @@ jobs:
     environment: dev
     env:
       env: dev
+      env_var: ${{ vars.ENV_DEV }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -40,7 +41,7 @@ jobs:
           echo Add other actions to build,
           echo test, and deploy your project.
           echo "${{env.env}}"
-          echo "My Environment Variable: $env_dev"
+          echo "My Environment Variable: $env_var"
           
           
           

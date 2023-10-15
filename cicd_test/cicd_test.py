@@ -7,7 +7,7 @@ import sys
 
 
 env = os.environ.get('env')
-env_dev = os.environ.get('env_dev')
+env_var = os.environ.get('env_var')
 
 #incoorect way to get the parameter - env_n wont get the value
 env_n = os.environ.get('ENV.ENV')
@@ -20,4 +20,4 @@ env_n = os.environ.get('ENV.ENV')
 #print(e)
 print('cicd test')
 print('hello test')
-print(f'this is {env} branch {env_n} and {env_dev}')
+print(f'this is {env} branch {env_n} and {env_var}')

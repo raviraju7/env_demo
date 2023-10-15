@@ -14,15 +14,14 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-env:
-  WORKFLOW_VARIABLE: ENV_DEV
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+  # This workflow contains a single job called "build"  
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    environment: dev
     env:
       env: dev
 
@@ -41,7 +40,7 @@ jobs:
           echo Add other actions to build,
           echo test, and deploy your project.
           echo "${{env.env}}"
-          echo "My Environment Variable: $WORKFLOW_VARIABLE"
+          echo "My Environment Variable: $env_dev"
           
           
           

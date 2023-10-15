@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 env:
-  ENV_DEV: WORKFLOW
+  WORKFLOW_VARIABLE: ENV_DEV
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -41,7 +41,7 @@ jobs:
           echo Add other actions to build,
           echo test, and deploy your project.
           echo "${{env.env}}"
-          echo "My Environment Variable: $ENV_DEV"
+          echo "My Environment Variable: $WORKFLOW_VARIABLE"
           
           
           

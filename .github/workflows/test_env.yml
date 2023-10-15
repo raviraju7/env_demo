@@ -38,7 +38,7 @@ jobs:
           echo Add other actions to build,
           echo test, and deploy your project.
           echo "${{env.env}}"
-          echo "My Environment Variable: $ENV_DEV"
+          echo "My Environment Variable: $dev.ENV_DEV"
           
           
           
